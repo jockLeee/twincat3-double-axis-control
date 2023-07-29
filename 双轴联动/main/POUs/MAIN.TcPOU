@@ -1,0 +1,283 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.12">
+  <POU Name="MAIN" Id="{838409ea-845a-4c16-9664-790e9d953e83}" SpecialFunc="None">
+    <Declaration><![CDATA[PROGRAM MAIN
+VAR_INPUT
+	FootPedalPressed	AT%I*	:	BOOL;	(*主轴脚踏开关i1*)
+	WireForwardWindingControl	AT%I*	:	BOOL;	(*自动排线正i2*)
+	WireBackwardWindingControl	AT%I*	:	BOOL;	(*自动排线反i3*)
+	MainAxisRotatingDirection AT%I*:	BOOL:= FALSE;	(*主轴旋转方向i4,TRUE 反向，FALSE正向*)
+	MainAxisRotatingBackFlag: BOOL:= TRUE;
+	cannel_5 AT%I*: BOOL;
+	WireBackwardManualControl 	AT%I*	:	BOOL;	(*手动排线反i6*)
+	WireForwardManualControl	AT%I*	:	BOOL;	(*手动排线正i7*)
+	WireLeadPositiveLimit 	AT%I*	:	BOOL;	(*排线轴正限位i8*)
+	WireLeadNegativeLimit 	AT%I*	:	BOOL;	(*排线轴负限位i9*)
+	WireLeadToZero		AT%I*	:	BOOL;	(*排线轴寻零i10*)
+	EL180911 AT%I*: BOOL;
+	EL180912 AT%I*: BOOL;
+
+	MainAxisSpeedControl	AT%I*	:	INT:=32767;		(*主轴调速, 模拟量*)
+
+END_VAR
+VAR_OUTPUT
+	OpMode	AT%Q*: SINT:=8;	(*OP MODE*)
+	Opmode2 AT%Q*: SINT:=8;	(*OP MODE*)
+
+	status_Axis_forward		AT%Q*:	BOOL;	(*主轴正转o1*)
+	status_Axis_backward		AT%Q*:	BOOL;	(*主轴反转o2*)
+	Manual_control_forward	AT%Q*:	BOOL;	(*手动正转o3*)
+	Manual_control_backward	AT%Q*:	BOOL;	(*手动反转o4*)
+	Auto_control_forward		AT%Q*:	BOOL;	(*自动正转o5*)
+	Auto_control_backward		AT%Q*:	BOOL;	(*自动反转o6*)
+	Forward_position_limit		AT%Q*: 	BOOL;	(*起点限位o7*)
+	Backward_position_limit	AT%Q*:	BOOL;	(*终点限位o8*)
+	T510_X1		AT%Q*:	BOOL:=	FALSE;	(*T510的x1, 接主轴驱动器o9*)
+	T510_X2		AT%Q*:	BOOL:=	FALSE;	(*T510的x2, 接主轴驱动器o10*)
+	MotorEnable1 	AT%Q*:	BOOL:=	FALSE;	(*主轴电机使能o11*)
+	MotorEnable2 	AT%Q*:	BOOL:=	FALSE;	(*主轴电机使能o12*)
+
+END_VAR
+VAR
+	Flag1: BOOL;
+	timer1: Pulse2;
+	shanshuo: BLINK;
+
+	AxisPower: Axis_Power;
+	AxisReset2:MC_Reset;
+	AxisReset1: MC_Reset;
+	MoveVelPlus: MC_MoveVelocity;
+	MoveVelDec: MC_MoveVelocity;
+	absMove1: MC_MoveAbsolute;
+	absMove2: MC_MoveAbsolute;
+
+	MOTORINIT: Motor_Init;
+	WriteParameter: AxisWriteParameter;
+	AxisStop: Axis_Limit_Stop;
+	AxisStop2: Axis_stop;
+	AxisToZero:Axis_To_Zero;
+	manleft:Manual_Left;
+	manright			:	Manual_Right;
+	AxisMove			:	Axis_Move;
+	MainAxisRotation	:	MainAxisRot;
+	ReadEncoderVel	:	ReadEncSpeed;
+	WireWeights	:	REAL:=	2.4;
+	TargetMainAxisSpeed	:	REAL:=	8;
+	ManualControlVelocity	:	REAL:=	8;
+	SlaveAxisBackZero	:	REAL:= 8;
+
+END_VAR]]></Declaration>
+    <Implementation>
+      <ST><![CDATA[
+(********************************************************  轴使能   ************************************************************)
+AxisPower(
+	SpeedControl:=MainAxisSpeedControl,
+	Power_Status=> );
+AxisReset1(
+	Execute:=EL180911,
+	Axis:= Axis1,
+	Done=> ,
+	Busy=> ,
+	Error=> ,
+	ErrorID=> );
+
+AxisReset2(
+	Execute:=EL180911,
+	Axis:= Axis3,
+	Done=> ,
+	Busy=> ,
+	Error=> ,
+	ErrorID=> );
+
+AxisStop(
+	Execute_:=WireLeadPositiveLimit,
+	Execute_2:=WireLeadNegativeLimit ,
+	Decelerations:=1500,
+	Flag1=>Forward_position_limit,
+	Flag2=> Backward_position_limit);
+
+ReadEncoderVel(input1:= AxisPower.Power_Status, RealSpeed=> );
+
+(****************************************************  主轴旋转方向设定	********************************************************)
+IF MainAxisRotatingDirection THEN
+	MainAxisRotatingBackFlag:=FALSE;
+	status_Axis_forward:=TRUE;
+	status_Axis_backward:=FALSE;
+ELSE
+	MainAxisRotatingBackFlag:= TRUE;
+	status_Axis_forward:=FALSE;
+	status_Axis_backward:=TRUE;
+END_IF
+
+(******************************************************	正转向右启动	*******************************************************)
+IF MainAxisRotatingDirection THEN
+	IF FootPedalPressed THEN
+			T510_X1:=TRUE;
+			MOTORINIT(forward_start:=MainAxisRotatingDirection , backward_start:=T510_X1 , Flag=> MotorEnable1);
+		ELSE
+			T510_X1:=FALSE;
+			MOTORINIT(forward_start:=FALSE , backward_start:=T510_X1 , Flag=> MotorEnable1);
+	END_IF
+	IF WireForwardWindingControl THEN
+		IF FootPedalPressed THEN OpMode:=8;
+		END_IF
+	(*伺服动作*)
+		MoveVelPlus(
+				Execute:=FootPedalPressed ,
+				Velocity:= (WireWeights*TargetMainAxisSpeed),
+				Acceleration:= ,
+				Deceleration:= ,
+				Jerk:= ,
+				Direction:= MC_Positive_Direction,
+				BufferMode:= ,
+				Options:= ,
+				Axis:=Axis1 ,
+				InVelocity=> ,
+				Busy=> ,
+				Active=>Auto_control_forward ,
+				CommandAborted=> ,
+				Error=> ,
+				ErrorID=> );
+
+		AxisStop2(Execute_:= FootPedalPressed);
+		(*AxisMove(Input1:=FootPedalPressed );*)
+	END_IF
+
+	(*正向向左启动*)
+	IF WireBackwardWindingControl THEN
+		IF FootPedalPressed THEN OpMode:=8;
+		END_IF
+	(*私服动作*)
+		MoveVelDec(
+				Execute:= FootPedalPressed,
+				Velocity:= (WireWeights*TargetMainAxisSpeed),
+				Acceleration:= ,
+				Deceleration:= ,
+				Jerk:= ,
+				Direction:= MC_Negative_Direction,
+				BufferMode:= ,
+				Options:= ,
+				Axis:=Axis1 ,
+				InVelocity=> ,
+				Busy=> ,
+				Active=>Auto_control_backward ,
+				CommandAborted=> ,
+				Error=> ,
+				ErrorID=> );
+		AxisStop2(Execute_:= FootPedalPressed);
+	END_IF
+END_IF
+
+
+(*****************************************************	反转向右启动	******************************************************)
+IF MainAxisRotatingBackFlag THEN
+	IF FootPedalPressed THEN
+			T510_X2:=TRUE;
+			MOTORINIT(forward_start:=MainAxisRotatingBackFlag , backward_start:=T510_X2 , Flag=> MotorEnable1);
+		ELSE
+			T510_X2:=FALSE;
+			MOTORINIT(
+					forward_start:=FALSE ,
+					backward_start:=T510_X2 ,
+					Flag=> MotorEnable1);
+	END_IF
+	IF WireForwardWindingControl THEN
+		IF FootPedalPressed THEN OpMode:=8;
+		END_IF
+		MoveVelPlus(
+				Execute:=FootPedalPressed ,
+				Velocity:= (WireWeights*TargetMainAxisSpeed),
+				Acceleration:= ,
+				Deceleration:= ,
+				Jerk:= ,
+				Direction:= MC_Positive_Direction,
+				BufferMode:= ,
+				Options:= ,
+				Axis:=Axis1 ,
+				InVelocity=> ,
+				Busy=> ,
+				Active=>Auto_control_forward ,
+				CommandAborted=> ,
+				Error=> ,
+				ErrorID=> );
+		AxisStop2(Execute_:= FootPedalPressed);
+	END_IF
+
+	(*反转向左启动*)
+	IF WireBackwardWindingControl THEN
+		MoveVelDec(
+				Execute:= FootPedalPressed,
+				Velocity:= (WireWeights*TargetMainAxisSpeed),
+				Acceleration:= ,
+				Deceleration:= ,
+				Jerk:= ,
+				Direction:= MC_Negative_Direction,
+				BufferMode:= ,
+				Options:= ,
+				Axis:=Axis1 ,
+				InVelocity=> ,
+				Busy=> ,
+				Active=>Auto_control_backward ,
+				CommandAborted=> ,
+				Error=> ,
+				ErrorID=> );
+		AxisStop2(Execute_:= FootPedalPressed);
+	END_IF
+END_IF
+
+
+(*****************************************************	手动控制正向启动	************************************************************)
+	(*私服动作*)
+IF WireForwardManualControl THEN
+	OpMode:=8;
+END_IF
+manleft(
+	Input1:=	WireForwardManualControl,
+	ManualCotrolSpeed	:=	ManualControlVelocity ,
+	Flag1	=>	Manual_control_forward);
+
+(*Flag1:=REAL_TO_INT(0.02432*MainAxisSpeedControl);
+timer1(button1:= WireForwardManualControl, time_fuction:=Flag1, Flag=>status_Axis_forward );*)
+
+
+(****************************************************	手动控制反向启动	************************************************************)
+	(*私服动作*)
+IF WireBackwardManualControl THEN
+	OpMode:=8;
+END_IF
+manright(
+	Input1:=WireBackwardManualControl,
+	ManualCotrolSpeed	:=ManualControlVelocity ,
+	Flag1=> Manual_control_backward);
+
+(**********************************************************	排线轴归零	*********************************************************************)
+IF WireLeadToZero THEN
+	OpMode:=8;
+END_IF
+AxisToZero(
+	Flag:= WireLeadToZero,
+	BackZeroSpeed:=SlaveAxisBackZero);
+
+(**********************************************************	主轴旋转控制	*****************************************************************)
+IF FootPedalPressed THEN
+	OpMode2:=8;
+END_IF
+MainAxisRotation(
+	Input1:=FootPedalPressed,
+	ForwardRotFlag:=MainAxisRotatingDirection,
+	BackwardRotFlag:=MainAxisRotatingBackFlag,
+	InputTargetSpeed:= TargetMainAxisSpeed);
+
+
+
+
+]]></ST>
+    </Implementation>
+    <LineIds Name="MAIN">
+      <LineId Id="66" Count="156" />
+      <LineId Id="225" Count="23" />
+      <LineId Id="252" Count="7" />
+      <LineId Id="261" Count="14" />
+    </LineIds>
+  </POU>
+</TcPlcObject>

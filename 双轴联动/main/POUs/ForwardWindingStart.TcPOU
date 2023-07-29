@@ -1,0 +1,35 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.12">
+  <POU Name="ForwardWindingStart" Id="{88d9c910-bb7c-485b-9cd5-286d938caca1}" SpecialFunc="None">
+    <Declaration><![CDATA[FUNCTION_BLOCK ForwardWindingStart
+VAR_INPUT
+	FootPedalPressed:	BOOL;	(*主轴脚踏开关*)
+	WireForwardWindingControl:	BOOL;	(*自动排线正*)
+END_VAR
+VAR_OUTPUT
+	X1: BOOL;	(*T510的x1*)(*接主轴驱动器*)
+	Enable: BOOL;
+END_VAR
+VAR
+	EngineX1: BOOL;
+	EngineEnable: BOOL;
+END_VAR]]></Declaration>
+    <Implementation>
+      <ST><![CDATA[(*正向绕线启动*)
+IF FootPedalPressed THEN
+	IF WireForwardWindingControl  THEN
+		X1:=TRUE;
+		Enable:=TRUE;
+	END_IF
+ELSE
+	X1:=FALSE;
+	Enable:=FALSE;
+END_IF
+EngineX1:=X1;
+EngineEnable:=Enable;]]></ST>
+    </Implementation>
+    <LineIds Name="ForwardWindingStart">
+      <LineId Id="13" Count="11" />
+    </LineIds>
+  </POU>
+</TcPlcObject>

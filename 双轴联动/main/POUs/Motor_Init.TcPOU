@@ -1,0 +1,23 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.12">
+  <POU Name="Motor_Init" Id="{a7b477bc-c74b-4d7f-9f89-ffcdb9e6f41b}" SpecialFunc="None">
+    <Declaration><![CDATA[FUNCTION_BLOCK Motor_Init
+VAR_INPUT
+	forward_start: BOOL;
+	backward_start: BOOL;
+END_VAR
+VAR_OUTPUT
+	Flag: BOOL;
+END_VAR]]></Declaration>
+    <Implementation>
+      <ST><![CDATA[IF forward_start OR backward_start THEN
+	Flag:=TRUE;
+ELSE
+	Flag:=FALSE;
+END_IF]]></ST>
+    </Implementation>
+    <LineIds Name="Motor_Init">
+      <LineId Id="8" Count="4" />
+    </LineIds>
+  </POU>
+</TcPlcObject>
